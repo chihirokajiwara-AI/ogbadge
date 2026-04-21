@@ -187,9 +187,33 @@ export async function renderOgImage(params: OgParams): Promise<Buffer> {
     ],
   });
 
+  return svgToPng(svg, width);
+}
+
+async function svgToPng(svg: string, width: number): Promise<Buffer> {
   const resvg = new Resvg(svg, {
     fitTo: { mode: "width", value: width },
   });
   const png = resvg.render();
   return Buffer.from(png.asPng());
+}
+
+/** Render a pre-built Satori element tree (from templates.ts) */
+export async function renderTemplate(
+  element: unknown,
+  width = 1200,
+  height = 630,
+): Promise<Buffer> {
+  const [fontData, fontBold] = await Promise.all([loadFont(), loadFontBold()]);
+
+  const svg = await satori(element as any, {
+    width,
+    height,
+    fonts: [
+      { name: "Inter", data: fontData, weight: 400, style: "normal" },
+      { name: "Inter", data: fontBold, weight: 700, style: "normal" },
+    ],
+  });
+
+  return svgToPng(svg, width);
 }

@@ -13,7 +13,8 @@
 
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { renderOgImage, type OgParams } from "./render.js";
+import { renderOgImage, renderTemplate, type OgParams } from "./render.js";
+import { TEMPLATES, type TemplateParams } from "./templates.js";
 
 const app = new Hono();
 
@@ -70,7 +71,7 @@ app.get("/api/og", async (c) => {
     const png = await renderOgImage(params);
     apiKey.usageThisMonth++;
 
-    return new Response(png, {
+    return new Response(png as unknown as BodyInit, {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=86400, s-maxage=604800",
@@ -81,6 +82,64 @@ app.get("/api/og", async (c) => {
     console.error("Render error:", err);
     return c.json({ error: "Failed to render image" }, 500);
   }
+});
+
+// ── Template endpoint ────────────────────────────────────
+
+app.get("/api/og/:template", async (c) => {
+  const templateId = c.req.param("template");
+  const templateFn = TEMPLATES[templateId];
+  if (!templateFn) {
+    return c.json({ error: `Unknown template: ${templateId}. Available: ${Object.keys(TEMPLATES).join(", ")}` }, 400);
+  }
+
+  const q = c.req.query();
+  const apiKeyRaw = q.key || c.req.header("x-api-key");
+  const apiKey = resolveKey(apiKeyRaw);
+
+  const limit = apiKey.tier === "pro" ? PRO_LIMIT : FREE_LIMIT;
+  if (apiKey.usageThisMonth >= limit) {
+    return c.json({ error: "Monthly limit reached. Upgrade at ogbadge.dev/pricing" }, 429);
+  }
+
+  const params: TemplateParams = {
+    title: q.title || "Untitled",
+    subtitle: q.subtitle,
+    domain: q.domain,
+    tag: q.tag,
+    author: q.author,
+    date: q.date,
+    stat: q.stat,
+    statLabel: q.statLabel || q.stat_label,
+    accentColor: q.color || q.accentColor,
+    watermark: apiKey.tier !== "pro",
+  };
+
+  try {
+    const element = templateFn(params);
+    const png = await renderTemplate(element, parseInt(q.width || "1200"), parseInt(q.height || "630"));
+    apiKey.usageThisMonth++;
+
+    return new Response(png as unknown as BodyInit, {
+      headers: {
+        "Content-Type": "image/png",
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        "X-OGBadge-Usage": `${apiKey.usageThisMonth}/${limit}`,
+      },
+    });
+  } catch (err) {
+    console.error("Template render error:", err);
+    return c.json({ error: "Failed to render image" }, 500);
+  }
+});
+
+// ── Templates list ───────────────────────────────────────
+
+app.get("/api/templates", (c) => {
+  return c.json({
+    templates: Object.keys(TEMPLATES),
+    docs: "GET /api/og/:template?title=...&subtitle=...&domain=...",
+  });
 });
 
 // ── Health check ─────────────────────────────────────────
