@@ -1,0 +1,24 @@
+{
+  "name": "ogbadge",
+  "version": "0.1.0",
+  "description": "Dynamic OG image generation API with built-in viral distribution via watermark on free tier",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc",
+    "start": "node build/server.js",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.0",
+    "@resvg/resvg-js": "^2.6.0",
+    "hono": "^4.0.0",
+    "satori": "^0.12.0",
+    "stripe": "^20.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0"
+  }
+}
