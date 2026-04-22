@@ -23,17 +23,56 @@ const app = new Hono();
 
 const FREE_LIMIT = 100;
 const PRO_LIMIT = 10_000;
+const MAX_WIDTH = 2400;
+const MAX_HEIGHT = 1260;
 
-function resolveKey(raw: string | undefined): { tier: "free" | "pro"; usageThisMonth: number } {
-  if (!raw) return { tier: "free", usageThisMonth: 0 };
-  const record = billing.getKey(raw);
-  if (!record) {
-    // Auto-create free key on first use
-    const newRecord = billing.createFreeKey();
-    // Store with user's provided key instead of generated one
-    return { tier: newRecord.tier, usageThisMonth: newRecord.usageThisMonth };
+// IP-based anonymous rate limiting
+const anonUsage = new Map<string, { count: number; resetAt: number }>();
+
+function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
+  return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    || c.req.header("x-real-ip")
+    || "unknown";
+}
+
+function checkAnonLimit(ip: string): { ok: boolean; usage: number } {
+  const now = Date.now();
+  let record = anonUsage.get(ip);
+  if (!record || now > record.resetAt) {
+    record = { count: 0, resetAt: now + 30 * 24 * 3600 * 1000 };
+    anonUsage.set(ip, record);
   }
-  return { tier: record.tier, usageThisMonth: record.usageThisMonth };
+  if (record.count >= FREE_LIMIT) return { ok: false, usage: record.count };
+  record.count++;
+  return { ok: true, usage: record.count };
+}
+
+function clampDimension(val: string | undefined, fallback: number, max: number): number {
+  if (!val) return fallback;
+  const n = parseInt(val);
+  if (isNaN(n) || n < 1) return fallback;
+  return Math.min(n, max);
+}
+
+interface ResolvedKey {
+  key: string | null;
+  tier: "free" | "pro";
+}
+
+function resolveKey(raw: string | undefined): ResolvedKey {
+  if (!raw) return { key: null, tier: "free" };
+  const record = billing.getKey(raw);
+  if (!record) return { key: null, tier: "free" }; // Don't auto-create keys for random strings
+  return { key: raw, tier: record.tier };
+}
+
+function checkAndIncrementUsage(resolved: ResolvedKey, ip: string): { ok: boolean; usage: number; limit: number } {
+  if (resolved.key) {
+    return billing.incrementUsage(resolved.key);
+  }
+  // Anonymous — use IP-based limit
+  const anon = checkAnonLimit(ip);
+  return { ...anon, limit: FREE_LIMIT };
 }
 
 // ── OG Image endpoint ────────────────────────────────────
@@ -41,10 +80,11 @@ function resolveKey(raw: string | undefined): { tier: "free" | "pro"; usageThisM
 app.get("/api/og", async (c) => {
   const q = c.req.query();
   const apiKeyRaw = q.key || c.req.header("x-api-key");
-  const apiKey = resolveKey(apiKeyRaw);
+  const resolved = resolveKey(apiKeyRaw);
+  const ip = getClientIp(c);
 
-  const limit = apiKey.tier === "pro" ? PRO_LIMIT : FREE_LIMIT;
-  if (apiKey.usageThisMonth >= limit) {
+  const usage = checkAndIncrementUsage(resolved, ip);
+  if (!usage.ok) {
     return c.json({ error: "Monthly limit reached. Upgrade at ogbadge.dev/pricing" }, 429);
   }
 
@@ -55,20 +95,20 @@ app.get("/api/og", async (c) => {
     theme: (q.theme as OgParams["theme"]) || "dark",
     accentColor: q.color || q.accentColor,
     emoji: q.emoji,
-    watermark: apiKey.tier !== "pro",
-    width: q.width ? parseInt(q.width) : 1200,
-    height: q.height ? parseInt(q.height) : 630,
+    watermark: resolved.tier !== "pro",
+    width: clampDimension(q.width, 1200, MAX_WIDTH),
+    height: clampDimension(q.height, 630, MAX_HEIGHT),
   };
 
   try {
     const png = await renderOgImage(params);
-    apiKey.usageThisMonth++;
 
-    return new Response(png as unknown as BodyInit, {
+    return new Response(new Uint8Array(png), {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=86400, s-maxage=604800",
-        "X-OGBadge-Usage": `${apiKey.usageThisMonth}/${limit}`,
+        "Vary": "x-api-key",
+        "X-OGBadge-Usage": `${usage.usage}/${usage.limit}`,
       },
     });
   } catch (err) {
@@ -88,10 +128,11 @@ app.get("/api/og/:template", async (c) => {
 
   const q = c.req.query();
   const apiKeyRaw = q.key || c.req.header("x-api-key");
-  const apiKey = resolveKey(apiKeyRaw);
+  const resolved = resolveKey(apiKeyRaw);
+  const ip = getClientIp(c);
 
-  const limit = apiKey.tier === "pro" ? PRO_LIMIT : FREE_LIMIT;
-  if (apiKey.usageThisMonth >= limit) {
+  const usage = checkAndIncrementUsage(resolved, ip);
+  if (!usage.ok) {
     return c.json({ error: "Monthly limit reached. Upgrade at ogbadge.dev/pricing" }, 429);
   }
 
@@ -105,19 +146,21 @@ app.get("/api/og/:template", async (c) => {
     stat: q.stat,
     statLabel: q.statLabel || q.stat_label,
     accentColor: q.color || q.accentColor,
-    watermark: apiKey.tier !== "pro",
+    watermark: resolved.tier !== "pro",
   };
 
   try {
     const element = templateFn(params);
-    const png = await renderTemplate(element, parseInt(q.width || "1200"), parseInt(q.height || "630"));
-    apiKey.usageThisMonth++;
+    const w = clampDimension(q.width, 1200, MAX_WIDTH);
+    const h = clampDimension(q.height, 630, MAX_HEIGHT);
+    const png = await renderTemplate(element, w, h);
 
-    return new Response(png as unknown as BodyInit, {
+    return new Response(new Uint8Array(png), {
       headers: {
         "Content-Type": "image/png",
         "Cache-Control": "public, max-age=86400, s-maxage=604800",
-        "X-OGBadge-Usage": `${apiKey.usageThisMonth}/${limit}`,
+        "Vary": "x-api-key",
+        "X-OGBadge-Usage": `${usage.usage}/${usage.limit}`,
       },
     });
   } catch (err) {
@@ -137,7 +180,21 @@ app.get("/api/templates", (c) => {
 
 // ── Billing endpoints ────────────────────────────────────
 
+// Rate-limited key creation (max 5 per IP per hour)
+const keyCreateLimits = new Map<string, { count: number; resetAt: number }>();
+
 app.get("/api/key", (c) => {
+  const ip = getClientIp(c);
+  const now = Date.now();
+  let limit = keyCreateLimits.get(ip);
+  if (!limit || now > limit.resetAt) {
+    limit = { count: 0, resetAt: now + 3600_000 };
+    keyCreateLimits.set(ip, limit);
+  }
+  if (limit.count >= 5) {
+    return c.json({ error: "Too many key requests. Try again later." }, 429);
+  }
+  limit.count++;
   const record = billing.createFreeKey();
   return c.json({ key: record.key, tier: record.tier, limit: FREE_LIMIT });
 });
@@ -176,6 +233,10 @@ app.post("/api/webhooks/stripe", async (c) => {
 });
 
 app.get("/api/stats", (c) => {
+  const adminKey = process.env.ADMIN_KEY;
+  if (!adminKey || c.req.header("x-admin-key") !== adminKey) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
   return c.json(billing.getStats());
 });
 

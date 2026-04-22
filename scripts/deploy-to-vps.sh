@@ -12,6 +12,7 @@ rsync -az --delete \
   --exclude='node_modules' \
   --exclude='.git' \
   --exclude='build' \
+  --exclude='.env*' \
   ~/dev/ogbadge/ "$VPS:$REMOTE_DIR/"
 
 # 2. Build & start
