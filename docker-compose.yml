@@ -1,0 +1,18 @@
+services:
+  ogbadge:
+    build: .
+    container_name: ogbadge
+    restart: unless-stopped
+    ports:
+      - "3460:3456"
+    environment:
+      - NODE_ENV=production
+      - PORT=3456
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY}
+      - STRIPE_PRICE_ID=${STRIPE_PRICE_ID}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3456/api/ping').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 3s
+      start_period: 10s

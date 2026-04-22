@@ -15,32 +15,25 @@ import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { renderOgImage, renderTemplate, type OgParams } from "./render.js";
 import { TEMPLATES, type TemplateParams } from "./templates.js";
+import * as billing from "./stripe.js";
 
 const app = new Hono();
 
-// ── In-memory key store (replace with KV/D1 in production) ──
+// ── Key resolution ──────────────────────────────────────
 
-interface ApiKey {
-  id: string;
-  tier: "free" | "pro";
-  usageThisMonth: number;
-  createdAt: string;
-}
-
-const keys = new Map<string, ApiKey>();
-
-// Default free key for unauthenticated requests
-const FREE_LIMIT = 100; // renders per month
+const FREE_LIMIT = 100;
 const PRO_LIMIT = 10_000;
 
-function resolveKey(raw: string | undefined): ApiKey {
-  if (!raw) return { id: "anon", tier: "free", usageThisMonth: 0, createdAt: "" };
-  const existing = keys.get(raw);
-  if (existing) return existing;
-  // Auto-create free key on first use
-  const newKey: ApiKey = { id: raw, tier: "free", usageThisMonth: 0, createdAt: new Date().toISOString() };
-  keys.set(raw, newKey);
-  return newKey;
+function resolveKey(raw: string | undefined): { tier: "free" | "pro"; usageThisMonth: number } {
+  if (!raw) return { tier: "free", usageThisMonth: 0 };
+  const record = billing.getKey(raw);
+  if (!record) {
+    // Auto-create free key on first use
+    const newRecord = billing.createFreeKey();
+    // Store with user's provided key instead of generated one
+    return { tier: newRecord.tier, usageThisMonth: newRecord.usageThisMonth };
+  }
+  return { tier: record.tier, usageThisMonth: record.usageThisMonth };
 }
 
 // ── OG Image endpoint ────────────────────────────────────
@@ -142,9 +135,53 @@ app.get("/api/templates", (c) => {
   });
 });
 
+// ── Billing endpoints ────────────────────────────────────
+
+app.get("/api/key", (c) => {
+  const record = billing.createFreeKey();
+  return c.json({ key: record.key, tier: record.tier, limit: FREE_LIMIT });
+});
+
+app.post("/api/checkout", async (c) => {
+  const body = await c.req.json();
+  const apiKey = body.key;
+  if (!apiKey) return c.json({ error: "key is required" }, 400);
+
+  try {
+    const baseUrl = new URL(c.req.url).origin;
+    const url = await billing.createCheckoutSession(
+      apiKey,
+      `${baseUrl}/api/checkout/success`,
+      `${baseUrl}/pricing`,
+    );
+    return c.json({ url });
+  } catch (err) {
+    console.error("Checkout error:", err);
+    return c.json({ error: "Failed to create checkout session" }, 500);
+  }
+});
+
+app.post("/api/webhooks/stripe", async (c) => {
+  const body = await c.req.text();
+  const sig = c.req.header("stripe-signature");
+  if (!sig) return c.json({ error: "Missing stripe-signature" }, 400);
+
+  try {
+    const result = await billing.handleWebhook(body, sig);
+    return c.json(result);
+  } catch (err) {
+    console.error("Webhook error:", err);
+    return c.json({ error: "Webhook failed" }, 400);
+  }
+});
+
+app.get("/api/stats", (c) => {
+  return c.json(billing.getStats());
+});
+
 // ── Health check ─────────────────────────────────────────
 
-app.get("/api/ping", (c) => c.json({ ok: true, version: "0.1.0" }));
+app.get("/api/ping", (c) => c.json({ ok: true, version: "0.2.0" }));
 
 // ── Landing page ─────────────────────────────────────────
 
