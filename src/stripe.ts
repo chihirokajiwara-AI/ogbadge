@@ -1,10 +1,12 @@
 /**
  * Stripe billing integration for OGBadge.
  * Handles checkout sessions, webhooks, and API key management.
+ * API keys and usage are persisted in SQLite (see db.ts).
  */
 
 import Stripe from "stripe";
 import { randomBytes } from "crypto";
+import { db } from "./db.js";
 
 let _stripe: Stripe | null = null;
 
@@ -17,7 +19,7 @@ function getStripe(): Stripe {
   return _stripe;
 }
 
-// ── API Key Store (SQLite in production, Map for MVP) ────
+// ── API Key Store (SQLite) ───────────────────────────────
 
 export interface ApiKeyRecord {
   key: string;
@@ -25,71 +27,103 @@ export interface ApiKeyRecord {
   stripeCustomerId?: string;
   stripeSubscriptionId?: string;
   usageThisMonth: number;
-  usageResetAt: string; // ISO date of next reset
+  usageResetAt: string;
   createdAt: string;
 }
 
-const keys = new Map<string, ApiKeyRecord>();
+interface Row {
+  key: string;
+  tier: "free" | "pro";
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  usage_this_month: number;
+  usage_reset_at: string;
+  created_at: string;
+}
+
+function fromRow(r: Row): ApiKeyRecord {
+  return {
+    key: r.key,
+    tier: r.tier,
+    stripeCustomerId: r.stripe_customer_id ?? undefined,
+    stripeSubscriptionId: r.stripe_subscription_id ?? undefined,
+    usageThisMonth: r.usage_this_month,
+    usageResetAt: r.usage_reset_at,
+    createdAt: r.created_at,
+  };
+}
+
+const stmts = {
+  select: db.prepare<string, Row>("SELECT * FROM api_keys WHERE key = ?"),
+  insert: db.prepare(
+    "INSERT INTO api_keys (key, tier, usage_this_month, usage_reset_at, created_at) VALUES (?, 'free', 0, ?, ?)",
+  ),
+  upgrade: db.prepare(
+    "UPDATE api_keys SET tier = 'pro', stripe_customer_id = ?, stripe_subscription_id = ? WHERE key = ?",
+  ),
+  downgradeBySub: db.prepare(
+    "UPDATE api_keys SET tier = 'free', stripe_subscription_id = NULL WHERE stripe_subscription_id = ?",
+  ),
+  resetUsage: db.prepare(
+    "UPDATE api_keys SET usage_this_month = 0, usage_reset_at = ? WHERE key = ?",
+  ),
+  bumpUsage: db.prepare(
+    "UPDATE api_keys SET usage_this_month = usage_this_month + 1 WHERE key = ?",
+  ),
+  stats: db.prepare<[], { free: number; pro: number; totalUsage: number }>(
+    `SELECT
+       SUM(CASE WHEN tier='free' THEN 1 ELSE 0 END) AS free,
+       SUM(CASE WHEN tier='pro'  THEN 1 ELSE 0 END) AS pro,
+       COALESCE(SUM(usage_this_month), 0)           AS totalUsage
+     FROM api_keys`,
+  ),
+};
+
+function nextMonthIso(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+}
 
 export function generateApiKey(): string {
   return `og_${randomBytes(24).toString("base64url")}`;
 }
 
 export function getKey(key: string): ApiKeyRecord | undefined {
-  return keys.get(key);
+  const row = stmts.select.get(key);
+  return row ? fromRow(row) : undefined;
 }
 
 export function createFreeKey(): ApiKeyRecord {
   const key = generateApiKey();
-  const now = new Date();
-  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-  const record: ApiKeyRecord = {
-    key,
-    tier: "free",
-    usageThisMonth: 0,
-    usageResetAt: nextMonth.toISOString(),
-    createdAt: now.toISOString(),
-  };
-  keys.set(key, record);
-  return record;
+  const now = new Date().toISOString();
+  const resetAt = nextMonthIso();
+  stmts.insert.run(key, resetAt, now);
+  return { key, tier: "free", usageThisMonth: 0, usageResetAt: resetAt, createdAt: now };
 }
 
 export function upgradeKey(key: string, customerId: string, subscriptionId: string): void {
-  const record = keys.get(key);
-  if (record) {
-    record.tier = "pro";
-    record.stripeCustomerId = customerId;
-    record.stripeSubscriptionId = subscriptionId;
-  }
+  stmts.upgrade.run(customerId, subscriptionId, key);
 }
 
 export function downgradeKey(subscriptionId: string): void {
-  for (const record of keys.values()) {
-    if (record.stripeSubscriptionId === subscriptionId) {
-      record.tier = "free";
-      record.stripeSubscriptionId = undefined;
-    }
-  }
+  stmts.downgradeBySub.run(subscriptionId);
 }
 
 export function incrementUsage(key: string): { ok: boolean; usage: number; limit: number } {
-  const record = keys.get(key);
+  const record = getKey(key);
   if (!record) return { ok: false, usage: 0, limit: 0 };
 
-  // Reset usage if past reset date
+  let usage = record.usageThisMonth;
   if (new Date() >= new Date(record.usageResetAt)) {
-    record.usageThisMonth = 0;
-    const now = new Date();
-    record.usageResetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+    stmts.resetUsage.run(nextMonthIso(), key);
+    usage = 0;
   }
 
   const limit = record.tier === "pro" ? 10_000 : 100;
-  if (record.usageThisMonth >= limit) {
-    return { ok: false, usage: record.usageThisMonth, limit };
-  }
+  if (usage >= limit) return { ok: false, usage, limit };
 
-  record.usageThisMonth++;
-  return { ok: true, usage: record.usageThisMonth, limit };
+  stmts.bumpUsage.run(key);
+  return { ok: true, usage: usage + 1, limit };
 }
 
 // ── Stripe Checkout ──────────────────────────────────────
@@ -143,11 +177,8 @@ export async function handleWebhook(body: string, signature: string): Promise<{ 
 // ── Key Stats ────────────────────────────────────────────
 
 export function getStats() {
-  let free = 0, pro = 0, totalUsage = 0;
-  for (const record of keys.values()) {
-    if (record.tier === "pro") pro++;
-    else free++;
-    totalUsage += record.usageThisMonth;
-  }
-  return { free, pro, totalKeys: free + pro, totalUsage };
+  const row = stmts.stats.get();
+  const free = row?.free ?? 0;
+  const pro = row?.pro ?? 0;
+  return { free, pro, totalKeys: free + pro, totalUsage: row?.totalUsage ?? 0 };
 }
