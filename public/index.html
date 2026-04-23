@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OGBadge — Dynamic OG Images via URL</title>
+  <meta name="description" content="Generate beautiful Open Graph images with a single URL. No design tools, no signup. Just add one meta tag.">
+  <meta property="og:title" content="OGBadge — Dynamic OG Images via URL">
+  <meta property="og:description" content="Generate beautiful Open Graph images with a single URL. No design tools needed.">
+  <meta property="og:image" content="https://ogbadge.dev/api/og/product?title=OGBadge&subtitle=Beautiful%20OG%20images%20via%20URL.%20One%20line%20of%20HTML.&tag=Free&domain=ogbadge.dev&color=%236366f1">
+  <meta property="og:url" content="https://ogbadge.dev">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼</text></svg>">
+  <style>
+    :root { --accent: #6366f1; --bg: #0f172a; --surface: #1e293b; --fg: #f8fafc; --muted: #94a3b8; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
+    a { color: var(--accent); text-decoration: none; }
+
+    /* Hero */
+    .hero { max-width: 900px; margin: 0 auto; padding: 80px 24px 40px; text-align: center; }
+    .hero h1 { font-size: 3.5rem; font-weight: 800; margin-bottom: 16px; background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero .tagline { font-size: 1.4rem; color: var(--muted); margin-bottom: 12px; }
+    .hero .sub { font-size: 1.1rem; color: #64748b; margin-bottom: 40px; max-width: 600px; margin-left: auto; margin-right: auto; }
+
+    /* Live Demo */
+    .demo { max-width: 900px; margin: 0 auto; padding: 0 24px 60px; }
+    .demo h2 { text-align: center; font-size: 1.5rem; margin-bottom: 24px; color: var(--muted); }
+    .demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    @media (max-width: 700px) { .demo-grid { grid-template-columns: 1fr; } }
+    .demo-form { background: var(--surface); padding: 24px; border-radius: 12px; }
+    .demo-form label { display: block; font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; margin-top: 12px; }
+    .demo-form input, .demo-form select { width: 100%; padding: 10px 12px; border: 1px solid #334155; border-radius: 6px; background: var(--bg); color: var(--fg); font-size: 0.95rem; }
+    .demo-form input:focus, .demo-form select:focus { outline: none; border-color: var(--accent); }
+    .demo-preview { display: flex; align-items: center; justify-content: center; }
+    .demo-preview img { width: 100%; border-radius: 12px; box-shadow: 0 20px 40px rgba(0,0,0,0.4); transition: opacity 0.2s; }
+
+    /* Code */
+    .code-section { max-width: 900px; margin: 0 auto; padding: 0 24px 60px; }
+    .code-section h2 { text-align: center; font-size: 1.5rem; margin-bottom: 8px; }
+    .code-section .subtitle { text-align: center; color: var(--muted); margin-bottom: 24px; }
+    .code-box { background: var(--surface); padding: 20px 24px; border-radius: 8px; font-family: 'SF Mono', 'Fira Code', monospace; font-size: 0.85rem; color: #a5f3fc; overflow-x: auto; position: relative; white-space: pre-wrap; word-break: break-all; }
+    .copy-btn { position: absolute; top: 12px; right: 12px; background: var(--accent); color: white; border: none; padding: 4px 12px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
+    .copy-btn:hover { background: #4f46e5; }
+
+    /* Templates */
+    .templates { max-width: 900px; margin: 0 auto; padding: 0 24px 60px; }
+    .templates h2 { text-align: center; font-size: 1.5rem; margin-bottom: 24px; }
+    .template-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    .template-card { border-radius: 8px; overflow: hidden; cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+    .template-card:hover { transform: translateY(-4px); box-shadow: 0 12px 24px rgba(0,0,0,0.3); }
+    .template-card img { width: 100%; display: block; }
+    .template-card .name { padding: 8px 12px; background: var(--surface); font-size: 0.85rem; color: var(--muted); text-align: center; }
+
+    /* Pricing */
+    .pricing { max-width: 900px; margin: 0 auto; padding: 0 24px 80px; }
+    .pricing h2 { text-align: center; font-size: 1.5rem; margin-bottom: 8px; }
+    .pricing .subtitle { text-align: center; color: var(--muted); margin-bottom: 32px; }
+    .plans { display: flex; gap: 24px; justify-content: center; flex-wrap: wrap; }
+    .plan { background: var(--surface); padding: 32px; border-radius: 12px; width: 300px; }
+    .plan.pro { border: 2px solid var(--accent); }
+    .plan h3 { font-size: 1.2rem; margin-bottom: 4px; }
+    .plan .price { font-size: 2.5rem; font-weight: 800; margin-bottom: 4px; }
+    .plan .price span { font-size: 1rem; font-weight: 400; color: var(--muted); }
+    .plan .desc { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .plan ul { list-style: none; margin-bottom: 24px; }
+    .plan li { padding: 6px 0; color: var(--muted); font-size: 0.9rem; }
+    .plan li::before { content: "✓ "; color: var(--accent); font-weight: 700; }
+    .plan .btn { display: block; text-align: center; padding: 12px; border-radius: 8px; font-weight: 600; font-size: 1rem; }
+    .plan .btn-free { background: var(--bg); color: var(--fg); border: 1px solid #334155; }
+    .plan .btn-pro { background: var(--accent); color: white; border: none; }
+    .plan .btn:hover { opacity: 0.9; }
+
+    /* Footer */
+    footer { text-align: center; padding: 40px 24px; color: #475569; font-size: 0.85rem; border-top: 1px solid #1e293b; }
+    footer a { color: #64748b; }
+  </style>
+</head>
+<body>
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>OGBadge</h1>
+    <p class="tagline">Beautiful OG images. One line of HTML.</p>
+    <p class="sub">Stop opening Canva for every blog post. Add a single meta tag and every page gets a stunning social preview card — automatically.</p>
+  </section>
+
+  <!-- Live Demo -->
+  <section class="demo">
+    <h2>Try it live</h2>
+    <div class="demo-grid">
+      <div class="demo-form">
+        <label>Title</label>
+        <input type="text" id="d-title" value="How I Built a SaaS in 30 Days" oninput="updatePreview()">
+        <label>Subtitle</label>
+        <input type="text" id="d-subtitle" value="Lessons learned from shipping fast" oninput="updatePreview()">
+        <label>Domain</label>
+        <input type="text" id="d-domain" value="myblog.dev" oninput="updatePreview()">
+        <label>Template</label>
+        <select id="d-template" onchange="updatePreview()">
+          <option value="">Default (gradient)</option>
+          <option value="blog">Blog Post</option>
+          <option value="stats">Stats Card</option>
+          <option value="product">Product Launch</option>
+          <option value="minimal">Minimal</option>
+        </select>
+        <label>Theme / Color</label>
+        <div style="display:flex;gap:8px">
+          <select id="d-theme" onchange="updatePreview()" style="flex:1">
+            <option value="gradient">Gradient</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+          <input type="color" id="d-color" value="#6366f1" onchange="updatePreview()" style="width:50px;padding:2px;cursor:pointer">
+        </div>
+        <label style="margin-top:16px">Tag (blog/product only)</label>
+        <input type="text" id="d-tag" value="" placeholder="e.g. Tutorial, Launch" oninput="updatePreview()">
+      </div>
+      <div class="demo-preview">
+        <img id="preview-img" src="/api/og?title=How+I+Built+a+SaaS+in+30+Days&subtitle=Lessons+learned+from+shipping+fast&domain=myblog.dev&theme=gradient&color=%236366f1" alt="OG image preview">
+      </div>
+    </div>
+  </section>
+
+  <!-- Code -->
+  <section class="code-section">
+    <h2>Add to any site in 10 seconds</h2>
+    <p class="subtitle">Works with Next.js, Astro, Hugo, WordPress, or plain HTML.</p>
+    <div class="code-box" id="code-output">
+      <button class="copy-btn" onclick="copyCode()">Copy</button>&lt;meta property="og:image" content="https://ogbadge.dev/api/og?title=Your+Title&amp;subtitle=Your+description" /&gt;</div>
+  </section>
+
+  <!-- Templates -->
+  <section class="templates">
+    <h2>7 templates, all customizable</h2>
+    <div class="template-grid">
+      <div class="template-card" onclick="selectTemplate('')">
+        <img src="/api/og?title=Default+Dark&subtitle=Clean+and+professional&theme=dark&domain=example.com" alt="Dark">
+        <div class="name">Dark</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('')">
+        <img src="/api/og?title=Light+Theme&subtitle=Bright+and+readable&theme=light&domain=example.com" alt="Light">
+        <div class="name">Light</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('')">
+        <img src="/api/og?title=Gradient&subtitle=Eye-catching+colors&theme=gradient&color=%23ec4899&domain=example.com" alt="Gradient">
+        <div class="name">Gradient</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('blog')">
+        <img src="/api/og/blog?title=10+Tips+for+Better+Code&tag=Tutorial&author=Jane+Dev&date=Apr+2026&domain=dev.to" alt="Blog">
+        <div class="name">Blog Post</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('stats')">
+        <img src="/api/og/stats?title=Q1+Results&stat=312%25&statLabel=Revenue+Growth&domain=startup.io&color=%2310b981" alt="Stats">
+        <div class="name">Stats Card</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('product')">
+        <img src="/api/og/product?title=Ship+Today&subtitle=The+fastest+way+to+launch&tag=New&domain=product.dev&color=%238b5cf6" alt="Product">
+        <div class="name">Product Launch</div>
+      </div>
+      <div class="template-card" onclick="selectTemplate('minimal')">
+        <img src="/api/og/minimal?title=Less+is+More&subtitle=Simple+elegant+design&domain=minimal.blog" alt="Minimal">
+        <div class="name">Minimal</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="pricing" id="pricing">
+    <h2>Simple pricing</h2>
+    <p class="subtitle">Start free. Upgrade when you need to remove the watermark.</p>
+    <div class="plans">
+      <div class="plan">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <p class="desc">Perfect for side projects and personal blogs.</p>
+        <ul>
+          <li>100 renders / month</li>
+          <li>All 7 templates</li>
+          <li>Custom colors & themes</li>
+          <li>No signup required</li>
+          <li>Tiny ogbadge.dev watermark</li>
+        </ul>
+        <a href="#" class="btn btn-free" onclick="getStarted()">Get started</a>
+      </div>
+      <div class="plan pro">
+        <h3>Pro</h3>
+        <div class="price">$9 <span>/mo</span></div>
+        <p class="desc">For professionals who want a clean look.</p>
+        <ul>
+          <li>10,000 renders / month</li>
+          <li>All 7 templates</li>
+          <li>No watermark</li>
+          <li>API key for tracking</li>
+          <li>Priority support</li>
+        </ul>
+        <a href="#" class="btn btn-pro" onclick="upgradePro()">Upgrade to Pro</a>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <p>Built by <a href="https://github.com/chihirokajiwara-AI/ogbadge">open source</a> contributors. <a href="/api/templates">API docs</a>.</p>
+  </footer>
+
+  <script>
+    let debounceTimer;
+    function updatePreview() {
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        const title = encodeURIComponent(document.getElementById('d-title').value || 'Untitled');
+        const subtitle = encodeURIComponent(document.getElementById('d-subtitle').value);
+        const domain = encodeURIComponent(document.getElementById('d-domain').value);
+        const template = document.getElementById('d-template').value;
+        const theme = document.getElementById('d-theme').value;
+        const color = encodeURIComponent(document.getElementById('d-color').value);
+        const tag = encodeURIComponent(document.getElementById('d-tag').value);
+
+        let url;
+        if (template) {
+          url = `/api/og/${template}?title=${title}&subtitle=${subtitle}&domain=${domain}&color=${color}`;
+          if (tag) url += `&tag=${tag}`;
+          if (template === 'blog') url += `&author=You&date=${new Date().toLocaleDateString('en', {month:'short',year:'numeric'})}`;
+        } else {
+          url = `/api/og?title=${title}&subtitle=${subtitle}&domain=${domain}&theme=${theme}&color=${color}`;
+        }
+
+        const img = document.getElementById('preview-img');
+        img.style.opacity = '0.5';
+        const newImg = new Image();
+        newImg.onload = () => { img.src = newImg.src; img.style.opacity = '1'; };
+        newImg.src = url;
+
+        // Update code snippet
+        const fullUrl = `https://ogbadge.dev${url}`;
+        document.getElementById('code-output').innerHTML =
+          `<button class="copy-btn" onclick="copyCode()">Copy</button>&lt;meta property="og:image" content="${fullUrl.replace(/&/g, '&amp;')}" /&gt;`;
+      }, 300);
+    }
+
+    function selectTemplate(t) {
+      document.getElementById('d-template').value = t;
+      updatePreview();
+    }
+
+    function copyCode() {
+      const code = document.getElementById('code-output').textContent.replace('Copy', '').trim();
+      const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      navigator.clipboard.writeText(decoded);
+      const btn = document.querySelector('.copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    }
+
+    function getStarted() {
+      const code = document.getElementById('code-output').textContent.replace('Copy', '').trim();
+      const decoded = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      navigator.clipboard.writeText(decoded);
+      alert('Meta tag copied to clipboard! Paste it into your HTML <head>.');
+    }
+
+    function upgradePro() {
+      alert('Pro tier coming soon! For now, enjoy the free tier.');
+    }
+  </script>
+</body>
+</html>

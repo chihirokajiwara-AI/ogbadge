@@ -16,6 +16,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev && apt-get purge -y python3 make g++ && apt-get autoremove -y
 COPY --from=builder /app/build ./build
 COPY src/fonts ./build/fonts
+COPY public ./public
 
 ENV NODE_ENV=production
 ENV PORT=3456
